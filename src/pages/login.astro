@@ -1,5 +1,4 @@
 ---
-// src/pages/login.astro
 import Layout from '../layouts/Layout.astro';
 
 // --- Get Environment Variables ---
@@ -25,7 +24,7 @@ const appwriteProjectId = import.meta.env.PUBLIC_APPWRITE_PROJECT_ID;
          <p class="text-center mt-4">Don't have an account? <a href="/signup">Sign up here</a>.</p>
     </div>
 
-    <script define:vars={{ appwriteEndpoint, appwriteProjectId }}>
+    <script type="module" define:vars={{ appwriteEndpoint, appwriteProjectId }}>
         // --- 1. Import Correctly ---
         import { Client, Account, AppwriteException } from 'appwrite';
 
