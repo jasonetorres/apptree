@@ -1,4 +1,5 @@
 ---
+// src/pages/login.astro
 import Layout from '../layouts/Layout.astro';
 
 // --- Get Environment Variables ---
@@ -24,11 +25,11 @@ const appwriteProjectId = import.meta.env.PUBLIC_APPWRITE_PROJECT_ID;
          <p class="text-center mt-4">Don't have an account? <a href="/signup">Sign up here</a>.</p>
     </div>
 
-    <script type="module" define:vars={{ appwriteEndpoint, appwriteProjectId }}>
-        // --- 1. Import Correctly ---
+
+    <script type="module" lang="ts" define:vars={{ appwriteEndpoint, appwriteProjectId }}>
+
         import { Client, Account, AppwriteException } from 'appwrite';
 
-        // --- 2. Initialize Appwrite ---
         const client = new Client()
             .setEndpoint(appwriteEndpoint)
             .setProject(appwriteProjectId);
@@ -36,13 +37,14 @@ const appwriteProjectId = import.meta.env.PUBLIC_APPWRITE_PROJECT_ID;
         const account = new Account(client);
         // --- End Initialization ---
 
-
+        // --- DOM Elements (TypeScript 'as' needs lang="ts") ---
         const form = document.getElementById('login-form') as HTMLFormElement | null;
         const emailInput = document.getElementById('email') as HTMLInputElement | null;
         const passwordInput = document.getElementById('password') as HTMLInputElement | null;
         const submitButton = document.getElementById('submit-button') as HTMLButtonElement | null;
         const messageArea = document.getElementById('message-area') as HTMLDivElement | null;
 
+        // --- Function with TypeScript types (needs lang="ts") ---
         function showMessage(text: string, type: 'error' | 'success' = 'error') {
             if (messageArea) {
                 messageArea.textContent = text;
@@ -70,16 +72,14 @@ const appwriteProjectId = import.meta.env.PUBLIC_APPWRITE_PROJECT_ID;
 
                 try {
                     console.log(`Attempting login for ${email}...`);
-                    // --- 4. Use Initialized 'account' ---
                     await account.createEmailPasswordSession(email, password);
                     console.log("Login successful! Redirecting...");
                     window.location.href = '/dashboard';
 
-                } catch (error: unknown) { // Use unknown for better type safety
+                } catch (error: unknown) { // TypeScript 'unknown' type needs lang="ts"
                     console.error("Login failed:", error);
                     let msg = "Login failed. Please check your credentials.";
 
-                    // --- 5. Improved Error Handling ---
                     if (error instanceof AppwriteException) {
                         if (error.message.toLowerCase().includes('verified')) {
                              msg = "Login failed. Please ensure your email is verified.";
