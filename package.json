@@ -4,7 +4,7 @@
   "description": "```sh npm create astro@latest -- --template basics ```",
   "license": "ISC",
   "author": "",
-  "type": "commonjs",
+  "type": "module",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -13,6 +13,7 @@
     "preview": "astro preview"
   },
   "dependencies": {
+    "@astrojs/node": "^9.2.2",
     "astro": "^5.8.0"
   }
 }
