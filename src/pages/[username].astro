@@ -4,6 +4,14 @@ import Layout from '../layouts/Layout.astro';
 export const prerender = false;
 
 const { username } = Astro.params;
+
+// --- Get All Environment Variables ---
+const appwriteEndpoint = import.meta.env.PUBLIC_APPWRITE_ENDPOINT;
+const appwriteProjectId = import.meta.env.PUBLIC_APPWRITE_PROJECT_ID;
+const dbId = import.meta.env.PUBLIC_APPWRITE_DATABASE_ID;
+const profilesCollectionId = import.meta.env.PUBLIC_APPWRITE_PROFILES_COLLECTION_ID;
+const linksCollectionId = import.meta.env.PUBLIC_APPWRITE_LINKS_COLLECTION_ID;
+const profilePicsBucketId = import.meta.env.PUBLIC_APPWRITE_PROFILE_PICS_BUCKET_ID;
 ---
 
 <Layout title={`@${username}'s Links`}>
@@ -26,8 +34,28 @@ const { username } = Astro.params;
         <a href="/" class="button mt-2">Go Home</a>
     </div>
 
-    <script type="module" define:vars={{ pageUsername: username }}>
-        import { appwrite } from 'appwrite.js';
+    <script type="module" define:vars={{
+        pageUsername: username,
+        appwriteEndpoint,
+        appwriteProjectId,
+        dbId,
+        profilesCollectionId,
+        linksCollectionId,
+        profilePicsBucketId
+    }}>
+        // --- 1. Import Correctly ---
+        import { Client, Databases, Storage, Query } from 'appwrite';
+
+        // --- 2. Initialize Appwrite ---
+        const client = new Client()
+            .setEndpoint(appwriteEndpoint)
+            .setProject(appwriteProjectId);
+
+        const databases = new Databases(client);
+        const storage = new Storage(client);
+        // --- End Initialization ---
+
+
         const loadingDiv = document.getElementById('public-profile-loading');
         const contentDiv = document.getElementById('public-profile-content');
         const notFoundDiv = document.getElementById('public-profile-not-found');
@@ -42,7 +70,7 @@ const { username } = Astro.params;
                 if (domain.includes('github.com')) return 'fa-brands fa-github';
                 if (domain.includes('twitter.com') || domain.includes('x.com')) return 'fa-brands fa-x-twitter';
                 if (domain.includes('linkedin.com')) return 'fa-brands fa-linkedin-in';
-                if (domain.includes('youtube.com')) return 'fa-brands fa-youtube';
+                if (domain.includes('youtube.com')) return 'fa-brands fa-youtube'; // Simplified YouTube check
                 if (domain.includes('instagram.com')) return 'fa-brands fa-instagram';
                 if (domain.includes('facebook.com')) return 'fa-brands fa-facebook';
                 if (domain.includes('dev.to')) return 'fa-brands fa-dev';
@@ -65,12 +93,19 @@ const { username } = Astro.params;
                  console.error("Public profile elements not found.");
                  return;
             }
+             // Check if Appwrite config is loaded
+            if (!appwriteEndpoint || !appwriteProjectId || !dbId || !profilesCollectionId || !linksCollectionId || !profilePicsBucketId) {
+                console.error("Appwrite configuration missing. Check .env file and define:vars.");
+                loadingDiv.textContent = 'Configuration Error.';
+                return;
+            }
 
             try {
-                // 1. Find profile
-                const profileQuery = await appwrite.databases.listDocuments(
-                    appwrite.dbId, appwrite.profilesCollectionId,
-                    [appwrite.Query.equal('username', pageUsername), appwrite.Query.limit(1)]
+                // 1. Find profile using 'databases' and 'Query'
+                const profileQuery = await databases.listDocuments(
+                    dbId, // Use env variable
+                    profilesCollectionId, // Use env variable
+                    [Query.equal('username', pageUsername), Query.limit(1)] // Use Query
                 );
 
                 if (profileQuery.documents.length === 0) throw new Error('User profile not found');
@@ -81,7 +116,8 @@ const { username } = Astro.params;
                 document.title = `@${userProfile.username}'s Links | applinks`;
                 publicBioP.textContent = userProfile.bio || '';
                 if (userProfile.profilePicId) {
-                    const picUrl = appwrite.storage.getFilePreview(appwrite.profilePicsBucketId, userProfile.profilePicId, 240);
+                    // Use 'storage' and env variable
+                    const picUrl = storage.getFilePreview(profilePicsBucketId, userProfile.profilePicId, 240);
                     publicProfilePic.style.backgroundImage = `url(${picUrl.toString()})`;
                     publicProfilePic.classList.remove('profile-pic-placeholder');
                     publicProfilePic.textContent = '';
@@ -91,10 +127,11 @@ const { username } = Astro.params;
                     publicProfilePic.textContent = userProfile.username.charAt(0).toUpperCase() || '?';
                 }
 
-                // 2. Fetch links
-                const linksQuery = await appwrite.databases.listDocuments(
-                    appwrite.dbId, appwrite.linksCollectionId,
-                    [appwrite.Query.equal('userId', userProfile.userId), appwrite.Query.orderAsc('order')]
+                // 2. Fetch links using 'databases' and 'Query'
+                const linksQuery = await databases.listDocuments(
+                    dbId, // Use env variable
+                    linksCollectionId, // Use env variable
+                    [Query.equal('userId', userProfile.userId), Query.orderAsc('order')] // Use Query
                 );
 
                 publicLinksContainer.innerHTML = '';

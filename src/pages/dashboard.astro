@@ -1,5 +1,13 @@
 ---
 import Layout from '../layouts/Layout.astro';
+
+// --- Get All Environment Variables ---
+const appwriteEndpoint = import.meta.env.PUBLIC_APPWRITE_ENDPOINT;
+const appwriteProjectId = import.meta.env.PUBLIC_APPWRITE_PROJECT_ID;
+const dbId = import.meta.env.PUBLIC_APPWRITE_DATABASE_ID;
+const profilesCollectionId = import.meta.env.PUBLIC_APPWRITE_PROFILES_COLLECTION_ID;
+const linksCollectionId = import.meta.env.PUBLIC_APPWRITE_LINKS_COLLECTION_ID;
+const profilePicsBucketId = import.meta.env.PUBLIC_APPWRITE_PROFILE_PICS_BUCKET_ID;
 ---
 
 <Layout title="My Dashboard">
@@ -32,7 +40,6 @@ import Layout from '../layouts/Layout.astro';
                      <label for="bio">Bio</label>
                      <textarea id="bio" placeholder="Tell us a bit about yourself..."></textarea>
                  </div>
-                 {/* "Save Profile" button is removed, "Publish" button handles this */}
              </form>
              <div id="profile-message-area" class="message" style="display: none;"></div>
          </div>
@@ -42,7 +49,6 @@ import Layout from '../layouts/Layout.astro';
             <ul id="links-list" class="dashboard-links-list">
                 {/* Links will be dynamically inserted here */}
             </ul>
-            {/* "Add New Link" form is moved to a modal */}
             <div id="link-message-area" class="message" style="display: none;"></div> {/* For delete link feedback */}
         </div>
 
@@ -51,40 +57,63 @@ import Layout from '../layouts/Layout.astro';
         </div>
     </div>
 
+    {/* Add Link Modal */}
     <div id="add-link-modal" class="modal-overlay">
-        <div class="modal-content">
-            <button class="modal-close-button" data-modal-id="add-link-modal">×</button>
-            <h3>Add New Link</h3>
-            <form id="add-link-modal-form" class="mt-2">
-                <div>
-                    <label for="modal-link-title">Title</label>
-                    <input type="text" id="modal-link-title" placeholder="e.g., My Portfolio" required />
-                </div>
-                <div>
-                    <label for="modal-link-url">URL</label>
-                    <input type="url" id="modal-link-url" placeholder="https://yourlink.com" required />
-                </div>
-                <button type="submit" id="submit-new-link-button" class="button">Add Link</button>
-            </form>
-            <div id="modal-link-message-area" class="message" style="display: none;"></div>
-        </div>
-    </div>
+         <div class="modal-content">
+             <button class="modal-close-button" data-modal-id="add-link-modal">×</button>
+             <h3>Add New Link</h3>
+             <form id="add-link-modal-form" class="mt-2">
+                 <div>
+                     <label for="modal-link-title">Title</label>
+                     <input type="text" id="modal-link-title" placeholder="e.g., My Portfolio" required />
+                 </div>
+                 <div>
+                     <label for="modal-link-url">URL</label>
+                     <input type="url" id="modal-link-url" placeholder="https://yourlink.com" required />
+                 </div>
+                 <button type="submit" id="submit-new-link-button" class="button">Add Link</button>
+             </form>
+             <div id="modal-link-message-area" class="message" style="display: none;"></div>
+         </div>
+     </div>
 
-    <div id="preview-modal" class="modal-overlay">
-        <div class="modal-content">
-            <button class="modal-close-button" data-modal-id="preview-modal">×</button>
-            <h2>My Page Preview</h2>
-            <div class="preview-controls mb-2">
-                <button id="refresh-preview-iframe-button" class="button secondary">Refresh Preview</button>
-            </div>
-            <div class="iframe-container">
-                <iframe id="page-preview-iframe" title="My Page Preview" src="about:blank"></iframe>
-            </div>
-        </div>
-    </div>
+     {/* Preview Modal */}
+     <div id="preview-modal" class="modal-overlay">
+         <div class="modal-content">
+             <button class="modal-close-button" data-modal-id="preview-modal">×</button>
+             <h2>My Page Preview</h2>
+             <div class="preview-controls mb-2">
+                 <button id="refresh-preview-iframe-button" class="button secondary">Refresh Preview</button>
+             </div>
+             <div class="iframe-container">
+                 <iframe id="page-preview-iframe" title="My Page Preview" src="about:blank"></iframe>
+             </div>
+         </div>
+     </div>
 
-    <script>
-        import { appwrite } from 'appwrite';
+    <script define:vars={{
+        appwriteEndpoint,
+        appwriteProjectId,
+        dbId,
+        profilesCollectionId,
+        linksCollectionId,
+        profilePicsBucketId
+    }}>
+        // --- 1. Import Correctly ---
+        import { Client, Account, Databases, Storage, ID, Query, AppwriteException } from 'appwrite';
+
+        // --- 2. Initialize Appwrite ---
+        const client = new Client()
+            .setEndpoint(appwriteEndpoint)
+            .setProject(appwriteProjectId);
+
+        const account = new Account(client);
+        const databases = new Databases(client);
+        const storage = new Storage(client);
+        // --- End Initialization ---
+
+
+        // DOM Elements (Keep as they are)
         const loadingState = document.getElementById('loading-state');
         const dashboardContent = document.getElementById('dashboard-content');
         const publishButton = document.getElementById('publish-button');
@@ -99,7 +128,7 @@ import Layout from '../layouts/Layout.astro';
         const uploadStatus = document.getElementById('upload-status');
         const profileMessageArea = document.getElementById('profile-message-area');
         const linksList = document.getElementById('links-list');
-        const linkMessageArea = document.getElementById('link-message-area'); 
+        const linkMessageArea = document.getElementById('link-message-area');
         const addLinkModal = document.getElementById('add-link-modal');
         const addLinkModalForm = document.getElementById('add-link-modal-form');
         const modalLinkTitleInput = document.getElementById('modal-link-title');
@@ -112,73 +141,71 @@ import Layout from '../layouts/Layout.astro';
         const closeButtons = document.querySelectorAll('.modal-close-button');
         const logoutButton = document.getElementById('logout-button');
 
+        // State variables (Keep as they are, JSDoc types should still work if 'appwrite' package is installed)
         /** @type {import('appwrite').Models.User<import('appwrite').Models.Preferences> | null} */
         let currentAuthUser = null;
         /** @type {(import('appwrite').Models.Document & {username: string, userId: string, bio?: string, profilePicId?: string}) | null} */
         let userProfileDoc = null;
 
-        /**
-         * @param {string} url
-         * @returns {string}
-         */
-        function getIconClass(url) {
-            try {
+        // Utility functions (Keep as they are)
+        function getIconClass(url) { /* ... same as before ... */ 
+             try {
                 const domain = new URL(url).hostname.toLowerCase().replace('www.', '');
                 if (domain.includes('github.com')) return 'fa-brands fa-github';
                 if (domain.includes('twitter.com') || domain.includes('x.com')) return 'fa-brands fa-x-twitter';
                 if (domain.includes('linkedin.com')) return 'fa-brands fa-linkedin-in';
-                if (domain.includes('youtube.com')) return 'fa-brands fa-youtube';
+                if (domain.includes('youtube.com')) return 'fa-brands fa-youtube'; // Simpler YouTube check
                 if (domain.includes('instagram.com')) return 'fa-brands fa-instagram';
-                // Add more as needed
+                if (domain.includes('facebook.com')) return 'fa-brands fa-facebook';
+                if (domain.includes('dev.to')) return 'fa-brands fa-dev';
+                if (domain.includes('medium.com')) return 'fa-brands fa-medium';
+                if (domain.includes('stackoverflow.com')) return 'fa-brands fa-stack-overflow';
+                if (domain.includes('gitlab.com')) return 'fa-brands fa-gitlab';
+                if (domain.includes('behance.net')) return 'fa-brands fa-behance';
+                if (domain.includes('dribbble.com')) return 'fa-brands fa-dribbble';
+                if (domain.includes('twitch.tv')) return 'fa-brands fa-twitch';
+                if (domain.includes('discord')) return 'fa-brands fa-discord';
+                if (url.startsWith('mailto:')) return 'fa-solid fa-envelope';
                 return 'fa-solid fa-link';
-            } catch (e) { return 'fa-solid fa-link'; }
+            } catch (e) {
+                return 'fa-solid fa-link';
+            }
         }
-
-        /**
-         * @param {HTMLElement | null} el
-         * @param {string} text
-         * @param {'error' | 'success'} [type='error']
-         * @param {number} [duration=4000]
-         */
-        function showMessage(el, text, type = 'error', duration = 4000) {
-            if (!el) return;
+        function showMessage(el, text, type = 'error', duration = 4000) { /* ... same as before ... */ 
+             if (!el) return;
             el.textContent = text;
             el.className = `message ${type}`;
             el.style.display = 'block';
             setTimeout(() => { if(el instanceof HTMLElement) el.style.display = 'none'; }, duration);
         }
-
-        /** @param {string} modalId */
-        function openModal(modalId) {
+        function openModal(modalId) { /* ... same as before ... */ 
             const modal = document.getElementById(modalId);
             if (modal && modal.classList.contains('modal-overlay')) {
                 modal.classList.add('active');
             }
         }
-
-        /** @param {string} modalId */
-        function closeModal(modalId) {
+        function closeModal(modalId) { /* ... same as before ... */ 
             const modal = document.getElementById(modalId);
             if (modal && modal.classList.contains('modal-overlay')) {
                 modal.classList.remove('active');
             }
         }
 
-        /**
-         * @param {import('appwrite').Models.User<import('appwrite').Models.Preferences>} authUser
-         * @returns {Promise<(import('appwrite').Models.Document & {username: string, userId: string, bio?: string, profilePicId?: string}) | null>}
-         */
+        // --- Core Appwrite Functions (Updated) ---
+
         async function ensureProfileExists(authUser) {
             if (!loadingState) return null;
             try {
-                const query = [appwrite.Query.equal('userId', authUser.$id), appwrite.Query.limit(1)];
-                const profileQuery = await appwrite.databases.listDocuments(appwrite.dbId, appwrite.profilesCollectionId, query);
+                // Use 'databases', 'Query', and env variables
+                const query = [Query.equal('userId', authUser.$id), Query.limit(1)];
+                const profileQuery = await databases.listDocuments(dbId, profilesCollectionId, query);
                 if (profileQuery.documents.length > 0) {
                      return /** @type {(import('appwrite').Models.Document & {username: string, userId: string, bio?: string, profilePicId?: string})} */ (profileQuery.documents[0]);
                 }
                 const newProfileData = { username: authUser.name, userId: authUser.$id, bio: '', profilePicId: '' };
-                const newProfile = await appwrite.databases.createDocument(
-                    appwrite.dbId, appwrite.profilesCollectionId, appwrite.ID.unique(), newProfileData
+                // Use 'databases', 'ID', and env variables
+                const newProfile = await databases.createDocument(
+                    dbId, profilesCollectionId, ID.unique(), newProfileData
                 );
                 return /** @type {(import('appwrite').Models.Document & {username: string, userId: string, bio?: string, profilePicId?: string})} */ (newProfile);
             } catch (error) {
@@ -188,8 +215,7 @@ import Layout from '../layouts/Layout.astro';
             }
         }
 
-        /** @param {(import('appwrite').Models.Document & {username: string, userId: string, bio?: string, profilePicId?: string})} profile */
-        function populateDashboard(profile) {
+        function populateDashboard(profile) { /* ... same as before, BUT 'updateProfilePicPreview' is now correct ... */ 
             if (!profile) return;
             userProfileDoc = profile;
 
@@ -200,40 +226,34 @@ import Layout from '../layouts/Layout.astro';
                 publicPageLink.textContent = publicLinkUrl;
             }
             if (bioTextarea instanceof HTMLTextAreaElement) bioTextarea.value = profile.bio || '';
-            updateProfilePicPreview(profile.profilePicId);
+            updateProfilePicPreview(profile.profilePicId); // Call the updated version
 
-            // Enable action buttons now that data is loaded
             if (publishButton instanceof HTMLButtonElement) publishButton.disabled = false;
             if (openPreviewModalButton instanceof HTMLButtonElement) openPreviewModalButton.disabled = false;
             if (openAddLinkModalButton instanceof HTMLButtonElement) openAddLinkModalButton.disabled = false;
         }
 
-        /** @param {string | undefined | null} picId */
         function updateProfilePicPreview(picId) {
             if (!profilePicPreviewEl || !userProfileDoc) return;
             if (picId) {
-                const picUrl = appwrite.storage.getFilePreview(appwrite.profilePicsBucketId, picId, 200);
+                // Use 'storage' and env variable
+                const picUrl = storage.getFilePreview(profilePicsBucketId, picId, 200);
                 profilePicPreviewEl.style.backgroundImage = `url(${picUrl.toString()})`;
                 profilePicPreviewEl.textContent = '';
             } else {
                 profilePicPreviewEl.style.backgroundImage = 'none';
-                if(userProfileDoc && typeof userProfileDoc.username === 'string') {
-                    profilePicPreviewEl.textContent = userProfileDoc.username.charAt(0).toUpperCase() || '?';
-                } else {
-                    profilePicPreviewEl.textContent = '?';
-                }
+                profilePicPreviewEl.textContent = userProfileDoc.username.charAt(0).toUpperCase() || '?';
             }
         }
 
-        async function publishChanges() { // Renamed from saveProfileData for clarity with button
+        async function publishChanges() {
             if (!userProfileDoc || !(bioTextarea instanceof HTMLTextAreaElement) || !(publishButton instanceof HTMLButtonElement)) return;
-            const originalButtonText = publishButton.innerHTML; // Save full HTML including icon
+            const originalButtonText = publishButton.innerHTML;
             publishButton.disabled = true; publishButton.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Publishing...';
             try {
-                // "Publish" currently only saves the bio. Profile picture is saved on upload.
-                // Links are saved/deleted individually.
-                const updatedDoc = await appwrite.databases.updateDocument(
-                    appwrite.dbId, appwrite.profilesCollectionId, userProfileDoc.$id,
+                // Use 'databases' and env variables
+                const updatedDoc = await databases.updateDocument(
+                    dbId, profilesCollectionId, userProfileDoc.$id,
                     { bio: bioTextarea.value.trim() }
                 );
                 if(userProfileDoc) userProfileDoc.bio = /** @type {string | undefined} */ (updatedDoc.bio);
@@ -245,7 +265,6 @@ import Layout from '../layouts/Layout.astro';
             finally { publishButton.disabled = false; publishButton.innerHTML = originalButtonText; }
         }
 
-        /** @param {File} file */
         async function uploadPicture(file) {
              if (!userProfileDoc || !(changePicButton instanceof HTMLButtonElement) || !uploadStatus) return;
              changePicButton.disabled = true;
@@ -254,13 +273,15 @@ import Layout from '../layouts/Layout.astro';
              }
              try {
                  if (userProfileDoc.profilePicId) {
-                     await appwrite.storage.deleteFile(appwrite.profilePicsBucketId, userProfileDoc.profilePicId);
+                     // Use 'storage' and env variable
+                     await storage.deleteFile(profilePicsBucketId, userProfileDoc.profilePicId);
                  }
-                 const uploadedFile = await appwrite.storage.createFile(appwrite.profilePicsBucketId, appwrite.ID.unique(), file);
-                 /** @type {Partial<import('appwrite').Models.Document & {profilePicId?: string}>} */
+                 // Use 'storage', 'ID', and env variable
+                 const uploadedFile = await storage.createFile(profilePicsBucketId, ID.unique(), file);
                  const updatePayload = { profilePicId: uploadedFile.$id };
-                 const updatedDoc = await appwrite.databases.updateDocument(
-                    appwrite.dbId, appwrite.profilesCollectionId, userProfileDoc.$id,
+                 // Use 'databases' and env variables
+                 const updatedDoc = await databases.updateDocument(
+                    dbId, profilesCollectionId, userProfileDoc.$id,
                     updatePayload
                  );
                  if(userProfileDoc) userProfileDoc.profilePicId = /** @type {string | undefined} */ (updatedDoc.profilePicId);
@@ -281,8 +302,9 @@ import Layout from '../layouts/Layout.astro';
             if (!linksList || !currentAuthUser) return;
             linksList.innerHTML = '<li>Loading links...</li>';
             try {
-                const query = [appwrite.Query.equal('userId', currentAuthUser.$id), appwrite.Query.orderAsc('order')];
-                const response = await appwrite.databases.listDocuments(appwrite.dbId, appwrite.linksCollectionId, query);
+                // Use 'databases', 'Query', and env variables
+                const query = [Query.equal('userId', currentAuthUser.$id), Query.orderAsc('order')];
+                const response = await databases.listDocuments(dbId, linksCollectionId, query);
                 linksList.innerHTML = '';
                 if (response.documents.length === 0) {
                     linksList.innerHTML = '<li style="background: none; box-shadow: none; border: none; text-align: center; color: var(--text-secondary-color);">No links added yet. Use the "+ Add Link" button.</li>';
@@ -308,26 +330,22 @@ import Layout from '../layouts/Layout.astro';
             }
         }
 
-        /**
-         * @param {string} title
-         * @param {string} url
-         */
         async function addLinkFromModal(title, url) {
             if (!currentAuthUser || !(submitNewLinkButton instanceof HTMLButtonElement) || !modalLinkMessageArea || !(addLinkModalForm instanceof HTMLFormElement) ) return;
-            const originalButtonText = submitNewLinkButton.textContent; // Assuming text only
+            const originalButtonText = submitNewLinkButton.textContent;
             submitNewLinkButton.disabled = true; submitNewLinkButton.textContent = 'Adding...';
             try {
-                const linkData = { title, url, userId: currentAuthUser.$id, order: 0 };
-                await appwrite.databases.createDocument(
-                    appwrite.dbId, appwrite.linksCollectionId, appwrite.ID.unique(), linkData
+                const linkData = { title, url, userId: currentAuthUser.$id, order: 0 }; // Consider implementing order logic
+                // Use 'databases', 'ID', and env variables
+                await databases.createDocument(
+                    dbId, linksCollectionId, ID.unique(), linkData
                 );
                 addLinkModalForm.reset();
                 showMessage(modalLinkMessageArea, 'Link added!', 'success', 2000);
                 await loadUserLinks();
                 setTimeout(() => {
                     closeModal('add-link-modal');
-                    // Clear message after modal is closed or after a delay
-                     if (modalLinkMessageArea instanceof HTMLElement) modalLinkMessageArea.style.display = 'none';
+                    if (modalLinkMessageArea instanceof HTMLElement) modalLinkMessageArea.style.display = 'none';
                 }, 1500);
             } catch (error) {
                 console.error("Error adding link:", error);
@@ -336,11 +354,11 @@ import Layout from '../layouts/Layout.astro';
             finally { submitNewLinkButton.disabled = false; submitNewLinkButton.textContent = originalButtonText; }
         }
 
-        /** @param {string} linkId */
         async function deleteLink(linkId) {
-            if (!linkMessageArea) return; // Use main link message area for feedback
+            if (!linkMessageArea) return;
             try {
-                await appwrite.databases.deleteDocument(appwrite.dbId, appwrite.linksCollectionId, linkId);
+                // Use 'databases' and env variables
+                await databases.deleteDocument(dbId, linksCollectionId, linkId);
                 showMessage(linkMessageArea, 'Link deleted!', 'success');
                 await loadUserLinks();
             } catch (error) {
@@ -354,16 +372,23 @@ import Layout from '../layouts/Layout.astro';
                 console.error("Essential dashboard layout elements not found!");
                 return;
             }
-            // Disable action buttons initially
+             // Check if Appwrite config is loaded
+            if (!appwriteEndpoint || !appwriteProjectId || !dbId || !profilesCollectionId || !linksCollectionId || !profilePicsBucketId) {
+                console.error("Appwrite configuration missing. Check .env file and define:vars.");
+                if (loadingState instanceof HTMLElement) loadingState.textContent = 'Configuration Error.';
+                return;
+            }
+            // Disable buttons
             if (publishButton instanceof HTMLButtonElement) publishButton.disabled = true;
             if (openPreviewModalButton instanceof HTMLButtonElement) openPreviewModalButton.disabled = true;
             if (openAddLinkModalButton instanceof HTMLButtonElement) openAddLinkModalButton.disabled = true;
 
             try {
-                currentAuthUser = await appwrite.account.get();
+                // Use 'account'
+                currentAuthUser = await account.get();
                 const profile = await ensureProfileExists(currentAuthUser);
                 if (profile) {
-                    populateDashboard(profile); // This will enable buttons
+                    populateDashboard(profile);
                     await loadUserLinks();
                     loadingState.style.display = 'none';
                     dashboardContent.style.display = 'block';
@@ -377,41 +402,26 @@ import Layout from '../layouts/Layout.astro';
             }
         }
 
-        // --- Event Listeners ---
-        if(publishButton) publishButton.addEventListener('click', publishChanges); // Changed from saveProfileData
-
+        // --- Event Listeners (Keep as they are, but they now use the correctly initialized functions) ---
+        if(publishButton) publishButton.addEventListener('click', publishChanges);
         if(openAddLinkModalButton) openAddLinkModalButton.addEventListener('click', () => openModal('add-link-modal'));
-
-        if(openPreviewModalButton && pagePreviewIframe instanceof HTMLIFrameElement) { // Ensure iframe exists
+        if(openPreviewModalButton && pagePreviewIframe instanceof HTMLIFrameElement) {
             openPreviewModalButton.addEventListener('click', () => {
                 if (userProfileDoc && userProfileDoc.username) {
                     const previewUrl = `/${userProfileDoc.username}`;
-                    console.log("Loading preview:", previewUrl);
-                    // Always set src to ensure it's fresh or reloaded if already open
-                    // To force a true reload if src is the same, clear it first or append a timestamp
                     if (pagePreviewIframe.src.endsWith(previewUrl) && pagePreviewIframe.contentWindow) {
                         pagePreviewIframe.contentWindow.location.reload();
-                    } else {
-                        pagePreviewIframe.src = previewUrl;
-                    }
-                } else {
-                    console.warn("User profile not ready for preview.");
-                    showMessage(profileMessageArea, "Profile not loaded. Cannot show preview.", "error");
-                }
+                    } else { pagePreviewIframe.src = previewUrl; }
+                } else { showMessage(profileMessageArea, "Profile not loaded. Cannot show preview.", "error"); }
                 openModal('preview-modal');
             });
         }
-
-        if(refreshPreviewIframeButton && pagePreviewIframe instanceof HTMLIFrameElement) { // Ensure iframe exists
+        if(refreshPreviewIframeButton && pagePreviewIframe instanceof HTMLIFrameElement) {
             refreshPreviewIframeButton.addEventListener('click', () => {
-                 if (pagePreviewIframe.contentWindow) {
-                    pagePreviewIframe.contentWindow.location.reload();
-                 } else if (userProfileDoc && userProfileDoc.username) {
-                     pagePreviewIframe.src = `/${userProfileDoc.username}`; // Fallback
-                 }
+                 if (pagePreviewIframe.contentWindow) { pagePreviewIframe.contentWindow.location.reload(); }
+                 else if (userProfileDoc && userProfileDoc.username) { pagePreviewIframe.src = `/${userProfileDoc.username}`; }
             });
         }
-
         closeButtons.forEach(button => {
             button.addEventListener('click', (e) => {
                 const target = e.currentTarget;
@@ -429,7 +439,6 @@ import Layout from '../layouts/Layout.astro';
                 }
             });
         });
-
         if(addLinkModalForm && modalLinkTitleInput instanceof HTMLInputElement && modalLinkUrlInput instanceof HTMLInputElement) {
             addLinkModalForm.addEventListener('submit', (e) => {
                 e.preventDefault();
@@ -438,7 +447,6 @@ import Layout from '../layouts/Layout.astro';
                 } else { showMessage(modalLinkMessageArea, 'Please enter both Title and URL.'); }
             });
         }
-
         if(changePicButton && profilePicUploadInput) {
             changePicButton.addEventListener('click', () => {
                 if (profilePicUploadInput instanceof HTMLInputElement) profilePicUploadInput.click();
@@ -450,28 +458,25 @@ import Layout from '../layouts/Layout.astro';
                 uploadPicture(target.files[0]);
             }
         });
-
         if(linksList) linksList.addEventListener('click', (e) => {
             const target = e.target;
             if (target instanceof HTMLElement && target.classList.contains('delete-link-button')) {
                 const linkId = target.dataset.linkId;
                 if (linkId && confirm('Are you sure you want to delete this link?')) {
-                    if (target instanceof HTMLButtonElement) {
-                         target.textContent = '...';
-                         target.disabled = true;
-                    }
+                    if (target instanceof HTMLButtonElement) { target.textContent = '...'; target.disabled = true; }
                     deleteLink(linkId);
                 }
             }
         });
-
         if(logoutButton) logoutButton.addEventListener('click', async () => {
             try {
-                await appwrite.account.deleteSession('current');
+                // Use 'account'
+                await account.deleteSession('current');
                 window.location.href = '/login';
             } catch (err) { console.error("Logout failed:", err); }
         });
 
+        // --- Start Everything ---
         initDashboard();
     </script>
 </Layout>
