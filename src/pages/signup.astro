@@ -1,6 +1,12 @@
 ---
-// src/pages/signup.astro (Option B - Updated)
+
 import Layout from '../layouts/Layout.astro';
+
+
+const appwriteEndpoint = import.meta.env.PUBLIC_APPWRITE_ENDPOINT;
+const appwriteProjectId = import.meta.env.PUBLIC_APPWRITE_PROJECT_ID;
+const dbId = import.meta.env.PUBLIC_APPWRITE_DATABASE_ID;
+const profilesCollectionId = import.meta.env.PUBLIC_APPWRITE_PROFILES_COLLECTION_ID;
 ---
 
 <Layout title="Sign Up">
@@ -26,8 +32,24 @@ import Layout from '../layouts/Layout.astro';
         <p class="text-center mt-4">Already have an account? <a href="/login">Login here</a>.</p>
     </div>
 
-    <script>
-        import { appwrite } from 'src/lib/appwrite';
+    <script define:vars={{
+        appwriteEndpoint,
+        appwriteProjectId,
+        dbId,
+        profilesCollectionId
+    }}>
+        // --- 1. Import Correctly ---
+        import { Client, Account, Databases, ID, Query, AppwriteException } from 'appwrite';
+
+        // --- 2. Initialize Appwrite ---
+        const client = new Client()
+            .setEndpoint(appwriteEndpoint)
+            .setProject(appwriteProjectId);
+
+        const account = new Account(client);
+        const databases = new Databases(client);
+        // --- End Initialization ---
+
 
         const form = document.getElementById('signup-form') as HTMLFormElement | null;
         const usernameInput = document.getElementById('username') as HTMLInputElement | null;
@@ -44,7 +66,14 @@ import Layout from '../layouts/Layout.astro';
             }
         }
 
-        if (form && submitButton && messageArea && usernameInput && emailInput && passwordInput) {
+        // --- 3. Check Config ---
+        if (!appwriteEndpoint || !appwriteProjectId || !dbId || !profilesCollectionId) {
+            console.error("Appwrite configuration missing. Check .env and define:vars.");
+            if (messageArea) showMessage("Configuration error. Cannot process signup.");
+        }
+
+
+        if (form && submitButton && messageArea && usernameInput && emailInput && passwordInput && appwriteEndpoint) {
             form.addEventListener('submit', async (e) => {
                 e.preventDefault();
 
@@ -58,50 +87,64 @@ import Layout from '../layouts/Layout.astro';
 
                 // --- Validation ---
                 if (!/^[a-z0-9_.-]+$/.test(username) || password.length < 8) {
-                    showMessage('Invalid username or password (min 8 chars).');
+                    showMessage('Invalid username (lowercase, numbers, _, ., -) or password (min 8 chars).');
                     submitButton.disabled = false;
                     submitButton.textContent = 'Sign Up';
                     return;
                 }
 
                 try {
-                    // Step 1: Check username (We still check to give early feedback)
-                    // Note: There's a small race condition risk here, but it's acceptable for many apps.
-                    const existingProfiles = await appwrite.databases.listDocuments(
-                        appwrite.dbId,
-                        appwrite.profilesCollectionId,
-                        [appwrite.Query.equal('username', username)]
+                    // Step 1: Check username
+                    console.log("Checking username:", username);
+                    // Use 'databases', 'Query', and env variables
+                    const existingProfiles = await databases.listDocuments(
+                        dbId,
+                        profilesCollectionId,
+                        [Query.equal('username', username)]
                     );
                     if (existingProfiles.total > 0) {
-                        throw new Error('Username might already be taken. Please choose another.');
+                        // Use a more specific error or handle it as a known case.
+                        throw new AppwriteException('Username might already be taken. Please choose another.', 409, 'user_already_exists');
                     }
 
                     // Step 2: Create Appwrite Auth User
-                    // We pass the 'username' as the 'name' field in Appwrite Auth
-                    await appwrite.account.create(appwrite.ID.unique(), email, password, username);
+                    console.log("Creating auth user for:", email);
+                    // Use 'account', 'ID'
+                    await account.create(ID.unique(), email, password, username);
                     console.log("Auth user created. Verification email sent.");
 
-                    // Step 3 & 4 - REMOVED: No profile creation, no login attempt.
+                    // Step 3 & 4 - REMOVED
 
                     // Step 5: Show Success Message
                     showMessage('Account created! Please check your email for a verification link, then head to the Login page.', 'success');
-                    form.reset(); // Clear the form
-                    submitButton.textContent = 'Account Created!'; // Change button text
+                    form.reset();
+                    submitButton.textContent = 'Account Created!';
 
-                } catch (error: any) {
+                } catch (error: unknown) { // Use 'unknown'
                     console.error("Signup process failed:", error);
-                    let errorMessage = error.message || 'An unknown error occurred.';
+                    let errorMessage = 'An unknown error occurred.';
 
-                    if (error.type === 'user_already_exists' || (error.message && error.message.includes('already exists'))) {
-                        errorMessage = 'An account with this email/username already exists.';
-                    } else {
-                         errorMessage = `An error occurred: ${error.message}`;
+                    // Check if it's an AppwriteException
+                    if (error instanceof AppwriteException) {
+                         if (error.code === 409 || error.message.includes('already exists')) {
+                            errorMessage = 'An account with this email or username already exists.';
+                         } else if (error.message.includes('Username')) {
+                             errorMessage = 'Username might already be taken. Please choose another.';
+                         } else {
+                            errorMessage = `Signup failed: ${error.message}`;
+                         }
+                    } else if (error instanceof Error) {
+                        errorMessage = `An error occurred: ${error.message}`;
                     }
+
                     showMessage(errorMessage);
                     submitButton.disabled = false;
                     submitButton.textContent = 'Sign Up';
                 }
             });
+        } else {
+             console.error("One or more signup form elements were not found or Appwrite not configured!");
+             if (messageArea) showMessage("Page Error: Could not find form elements or config.");
         }
     </script>
 </Layout>
