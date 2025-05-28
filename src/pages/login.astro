@@ -22,7 +22,7 @@ import Layout from '../layouts/Layout.astro';
     </div>
 
     <script>
-        import { appwrite } from '../lib/appwrite';
+        import { appwrite } from 'appwrite';
 
         const form = document.getElementById('login-form') as HTMLFormElement | null;
         const emailInput = document.getElementById('email') as HTMLInputElement | null;
