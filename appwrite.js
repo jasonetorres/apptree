@@ -1,4 +1,3 @@
-// src/lib/appwrite.js
 import { Client, Account, Databases, Storage, ID, Query } from 'appwrite';
 
 const client = new Client();

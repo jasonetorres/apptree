@@ -27,7 +27,7 @@ const { username } = Astro.params;
     </div>
 
     <script type="module" define:vars={{ pageUsername: username }}>
-        import { appwrite } from '/src/lib/appwrite.js';
+        import { appwrite } from 'appwrite.js';
         const loadingDiv = document.getElementById('public-profile-loading');
         const contentDiv = document.getElementById('public-profile-content');
         const notFoundDiv = document.getElementById('public-profile-not-found');
